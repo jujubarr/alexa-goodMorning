@@ -85,3 +85,28 @@ exports.handler = function (event, context) {
     alexa.registerHandlers(handlers);
     alexa.execute();
 };
+
+
+
+/*
+USEFUL REFERENCE
+
+var speechOutput = {
+  speech: "<speak>Welcome to the sand box. "
+    + "<audio src='https://s3.amazonaws.com/sounds226/boom.mp3'/>"
+    + "</speak>",
+  type: AlexaSkill.speechOutputType.SSML
+  },
+  repromptOutput = {
+    speech: "This is the reprompt text. ",
+    type: AlexaSkill.speechOutputType.PLAIN_TEXT
+  };
+
+response.ask(speechOutput, repromptOutput);
+
+// http://iknow.jp/api/v2/goals/566921
+
+// MP3 source, two sentences in each goal_item
+{data}.goal_items[random].sentences[0].sound // JPN SOUND
+{data}.goal_items[random].sentences[0].response.text // ENG TEXT
+*/
