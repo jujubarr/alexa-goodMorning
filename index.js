@@ -6,21 +6,94 @@ const APP_ID = 'amzn1.ask.skill.b10d250d-4358-466a-a9b2-4fd5a28db0bb';
 
 const handlers = {
 	'LaunchRequest': function () {
-		this.attributes.speechOutput='Good morning Rosemary. What would you like to know about your morning?';
-		this.attributes.repromptSpeech = 'What would you like to know about your morning?';
+		this.attributes.repromptSpeech = ' What would you like to know about your morning?';
+		this.attributes.speechOutput = 'Good morning Rosemary.' + this.attributes.repromptSpeech;
 		this.emit(':ask', this.attributes.speechOutput, this.attributes.repromptSpeech);
 	},
 
 	'GoodMorningIntent': function () {
 	    var http = require( 'http' );
-        var weatherURL = 'http://api.openweathermap.org/data/2.5/weather?q='+ "palo%20alto" +'&&appid=51e3afe579df8bbb4584badce5bd804a';
-        var wordURL = 'http://www.wordsapi.com/mashape/words/{0}?when=2017-07-01T08:43:45.502Z&encrypted=8cfdb28de722949bea9007bfe758babaaeb4280935ff95b8';
+	    var https = require( 'https' );
+	    var city = "palo%20alto";
+	    var origin = "214+Madison+St,+San+Francisco,+CA+94134";
+	    var destination = "3420+Hillview+Ave,+Palo+Alto,+CA+94304";
+	    
+        var weatherURL = 'http://api.openweathermap.org/data/2.5/weather?q='+ city +'&&appid=51e3afe579df8bbb4584badce5bd804a';
+        var wordURL = 'http://iknow.jp/api/v2/goals/566921?';
+        var commuteURL = 'https://maps.googleapis.com/maps/api/distancematrix/json?units=imperial&origins='+origin+'&destinations='+destination+'&key=AIzaSyDYAxLj15xgJEo8jiKHyV2lIzDDt7M21Ro';
         var self = this;
+        this.attributes.repromptSpeech = " Anything else?";
         
-        // Callback handler for weather
+        // generic callback handler
         var callback = function (responseText) {
-            self.emit(':tell', responseText);
+            responseText += self.attributes.repromptSpeech;
+            self.emit(':ask', responseText, self.attributes.repromptSpeech);
         };
+        
+        var getAudio = function (src) {
+            return "<audio src='" + src + "'/> ";
+        };
+        
+        var getPause = function (time) {
+            return "<break time=\"" + time + "\"/> ";
+        };
+        
+        var sayWord = function (word) {
+            var speech = "";
+            
+            speech += getAudio(word.sound);
+            speech += getPause('1000ms');
+            speech += word.item.response.text;
+            speech += getPause('1000ms');
+            
+            return speech;
+        };
+        
+        var saySentence = function (sentence) {
+            if (!sentence) {
+                return;
+            }
+            
+            var speech = "";
+            
+            speech += getAudio(sentence.sound);
+            speech += getPause('1000ms');
+            speech += getAudio(sentence.sound);
+            speech += getPause('1000ms');
+            speech += sentence.response.text;
+            speech += getPause('1000ms');
+            speech += getAudio(sentence.sound);
+            speech += getPause('2000ms');
+            
+            return speech;
+        };
+        
+        // vocabCallback handler for word of the day
+        var vocabCallback = function (data) {
+            var day = getDayCount("7/2/2017") * 10;
+            var speech = "";
+            
+            for (var i = day; i < day + 10; i++) {
+                var word = data.goal_items[i];
+                speech += sayWord(word);
+                
+                var exampleSentence1 = word.sentences[0];
+                var exampleSentence2 = word.sentences[1];
+                speech += saySentence(exampleSentence1);
+                speech += saySentence(exampleSentence2);
+            }
+            
+            speech += self.attributes.repromptSpeech;
+            self.emit(':ask', speech, self.attributes.repromptSpeech); 
+        }
+        
+        // Get days passed sinceDateString
+        var getDayCount = function (sinceDateString) {
+            var mdy = sinceDateString.split('/');
+            var sinceDate = new Date(mdy[2], mdy[0]-1, mdy[1]);
+            
+            return Math.round((new Date() - sinceDate)/(1000*60*60*24));
+        }
         
         var getFaren = function (kelvin) {
             return Math.floor(kelvin * (9/5) - 459.67);
@@ -31,20 +104,31 @@ const handlers = {
 		if (itemSlot && itemSlot.value) {
 			itemName = itemSlot.value.toLowerCase();
 		}
-		
-		this.attributes.repromptSpeech = "Anything else?";
 
-		if (itemName == 'thank you') {
+		if (itemName == 'thank you' || itemName == 'no') {
 			this.emit(':tell', "Have a great day");
 		}
 		else {
-			var word = ['rock', 'paper', 'scissors', 'lizard', 'spock'];
-			var rand = Math.floor(Math.random()*5);
-			var alexa_word = word[rand];
 			
 			var options = {
 				commute: function () {
-				    self.emit(':ask', "you said commute.", self.attributes.repromptSpeech);
+				    https.get( commuteURL, function( response ) {
+                        response.on( 'data', function( text ) {
+                            var data = JSON.parse(text);
+                            var duration = data.rows[0].elements[0].duration.text;
+                            var num = duration.split(' ')[0];
+                            
+                            var commute = "";
+                            if (num >= 50) {
+                                commute += "Oh damn. ";
+                            }
+                            else {
+                                commute += "Nice. ";
+                            }
+                            commute += "Looks like it will take " + duration + " to get to work this morning. ";
+                            callback(commute);
+                        } );
+                    } );
 				},
 				weather: function () {
 				    http.get( weatherURL, function( response ) {
@@ -59,12 +143,17 @@ const handlers = {
 				},
 				"word of the day": function () {
 				    var word = "random";
-				    http.get( wordURL.replace('{0}', word), function( response ) {
-                        response.on( 'data', function( text ) {
-                            var data = JSON.parse(text);
-                            var definition = data.results[0].definition;
-                            callback(word + '. ' + definition);
-                        } );
+				    http.get( wordURL, function(response) {
+			            var body = '';
+                        response.on('data', function (chunk) {
+                            body += chunk;
+                        });
+                        response.on( 'end', function() {
+                            var data = JSON.parse(body);
+                            vocabCallback(data);
+                        }).on('error', (e) => {
+                            self.emit(':ask', 'error. ' + e.message, self.attributes.repromptSpeech);
+                        });
                     } );
 				},
 				everything: function () {
@@ -85,28 +174,3 @@ exports.handler = function (event, context) {
     alexa.registerHandlers(handlers);
     alexa.execute();
 };
-
-
-
-/*
-USEFUL REFERENCE
-
-var speechOutput = {
-  speech: "<speak>Welcome to the sand box. "
-    + "<audio src='https://s3.amazonaws.com/sounds226/boom.mp3'/>"
-    + "</speak>",
-  type: AlexaSkill.speechOutputType.SSML
-  },
-  repromptOutput = {
-    speech: "This is the reprompt text. ",
-    type: AlexaSkill.speechOutputType.PLAIN_TEXT
-  };
-
-response.ask(speechOutput, repromptOutput);
-
-// http://iknow.jp/api/v2/goals/566921
-
-// MP3 source, two sentences in each goal_item
-{data}.goal_items[random].sentences[0].sound // JPN SOUND
-{data}.goal_items[random].sentences[0].response.text // ENG TEXT
-*/
